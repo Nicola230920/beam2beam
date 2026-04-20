@@ -1,0 +1,680 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Beam2Beam | Calcolatore Strutturale Gratuito Online</title>
+<meta name="description" content="Risolutore di telai 2D online gratuito. Calcola reazioni vincolari, sforzo normale, taglio, momento flettente e deformata. Disegna il tuo schema strutturale interattivamente.">
+<meta name="keywords" content="FEA, elementi finiti, calcolo strutturale, telaio 2D, ingegneria civile, diagrammi taglio momento">
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <style>
+        body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background-color: #f0f2f5; }
+        .toolbar { padding: 12px; background: #2c3e50; border-bottom: 1px solid #1a252f; display: flex; gap: 10px; align-items: center; color: white; }
+        .toolbar button { padding: 8px 15px; cursor: pointer; border-radius: 4px; border: none; background: #34495e; color: white; transition: background 0.2s; }
+        .toolbar button:hover { background: #465c71; }
+        .btn-solve { background-color: #27ae60 !important; font-weight: bold; margin-left: auto; }
+        .btn-solve:hover { background-color: #2ecc71 !important; }
+        .btn-dxf { background-color: #8e44ad !important; font-weight: bold; }
+        .btn-dxf:hover { background-color: #9b59b6 !important; }
+        
+        .main-container { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 320px; background: #fff; border-right: 1px solid #ddd; padding: 15px; overflow-y: auto; box-shadow: 2px 0 5px rgba(0,0,0,0.05); }
+        .sidebar h4 { margin: 20px 0 10px; font-size: 13px; color: #7f8c8d; text-transform: uppercase; letter-spacing: 1px; border-bottom: 2px solid #eee; padding-bottom: 5px;}
+        .form-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+        .form-row label { width: 70px; font-size: 12px; font-weight: 600; color: #34495e; }
+        .form-row input, .form-row select { flex: 1; padding: 5px; border: 1px solid #dcdde1; border-radius: 4px; font-size: 13px; }
+        .sidebar button { width: 100%; padding: 8px; margin-top: 10px; cursor: pointer; border-radius: 4px; border: 1px solid #dcdde1; background: #f8f9fa; font-weight: 600; }
+        .sidebar button:hover { background: #e9ecef; }
+        
+        .canvas-container { flex: 1; position: relative; background: #fff; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; cursor: crosshair; }
+        #statusBar { padding: 8px 15px; background: #fff; font-size: 12px; border-top: 1px solid #ddd; color: #7f8c8d; }
+
+        /* MODALE A 4 QUADRANTI RIGOROSI */
+        #resultsModal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 1000; justify-content: center; align-items: center; }
+        .modal-content { background: #fff; width: 98%; height: 96%; border-radius: 8px; display: flex; flex-direction: column; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+        .modal-header { padding: 10px 20px; background: #2c3e50; color: white; display: flex; justify-content: space-between; align-items: center; height: 40px; }
+        
+        .modal-body { 
+            flex: 1; 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            grid-template-rows: 1fr 1fr; 
+            gap: 10px; 
+            padding: 10px; 
+            background: #e2e6ea; 
+            height: calc(100% - 60px); 
+        }
+        .plot-container { 
+            background: white; 
+            border-radius: 6px; 
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.05); 
+            width: 100%; 
+            height: 100%; 
+            position: relative;
+        }
+        .close-btn { color: white; font-size: 28px; cursor: pointer; background: none; border: none; font-weight: bold;}
+        .close-btn:hover { color: #e74c3c; }
+
+        /* BANNER COOKIE */
+        #cookie-banner { position: fixed; bottom: 0; left: 0; width: 100%; background: #2c3e50; color: white; padding: 15px; text-align: center; z-index: 10000; display: none; box-sizing: border-box; border-top: 2px solid #34495e; font-size: 14px; }
+        #cookie-banner button { background: #27ae60; color: white; border: none; padding: 8px 20px; margin-left: 15px; cursor: pointer; border-radius: 4px; font-weight: bold; transition: background 0.2s; }
+        #cookie-banner button:hover { background: #2ecc71; }
+        
+        /* FIX WIDGET GOOGLE TRANSLATE */
+        .goog-te-banner-frame { display: none !important; }
+        body { top: 0px !important; }
+    </style>
+</head>
+<body>
+
+    <div class="toolbar">
+        <button onclick="setTool('Seleziona')">Seleziona</button>
+        <button onclick="setTool('Disegna Asta')">Disegna Asta</button>
+        <button onclick="setTool('Cancella Elemento')" style="color: #e74c3c;">Cancella Elemento</button>
+        <button onclick="setTool('Cancella Carico')" style="color: #e67e22;">Cancella Carico</button>
+        
+        <div id="google_translate_element"></div>
+
+        <button class="btn-solve" onclick="runSolve()">RISOLVI E GRAFICA</button>
+        <button class="btn-dxf" onclick="exportDXF()">ESPORTA IN CAD</button>
+    </div>
+
+    <div class="main-container">
+        <div class="sidebar">
+            <h4>Coordinate Nodo</h4>
+            <div class="form-row"><label>X (m):</label><input type="number" id="entry_x" value="5.0"></div>
+            <div class="form-row"><label>Y (m):</label><input type="number" id="entry_y" value="4.0"></div>
+            <button onclick="addNodeFromCoords()">Aggiungi Nodo</button>
+
+            <h4>Vincoli Esterni</h4>
+            <div class="form-row">
+                <select id="combo_vincolo_ext">
+                    <option>Incastro</option><option>Cerniera</option><option>Carrello</option>
+                    <option>Pendolo</option><option>Doppio Pendolo</option><option selected>Libero</option>
+                </select>
+            </div>
+            <div class="form-row"><label>Angolo (°):</label><input type="number" id="entry_node_angle" value="0.0"></div>
+            
+            <h4>Svincoli Interni</h4>
+            <div class="form-row">
+                <select id="combo_vincolo_int">
+                    <option selected>Nessuno (Incastro)</option><option>Cerniera Interna</option>
+                    <option>Pendolo Interno</option><option>Doppio Pendolo Interno</option>
+                </select>
+            </div>
+            <button onclick="setTool('Applica Vincolo')">Applica Vincoli</button>
+
+            <h4>Proprietà Asta</h4>
+            <div class="form-row"><label>E (Pa):</label><input type="number" id="entry_e" value="210e9"></div>
+            <div class="form-row"><label>A (m²):</label><input type="number" id="entry_a" value="0.01"></div>
+            <div class="form-row"><label>I (m⁴):</label><input type="number" id="entry_i" value="0.0001"></div>
+
+            <h4>Carichi Nodali (kN)</h4>
+            <div class="form-row"><label>Fx:</label><input type="number" id="entry_fx" value="10.0"></div>
+            <div class="form-row"><label>Fy:</label><input type="number" id="entry_fy" value="-2.0"></div>
+            <button onclick="setTool('Applica Forza Concentrata')">Applica Forza</button>
+
+            <h4>Molle (kN/m)</h4>
+            <div class="form-row"><label>Kx:</label><input type="number" id="entry_kx" value="0.0"></div>
+            <div class="form-row"><label>Ky:</label><input type="number" id="entry_ky" value="75000.0"></div>
+            <div class="form-row"><label>Kφ:</label><input type="number" id="entry_kphi" value="0.0"></div>
+            <button onclick="setTool('Applica Molla')">Applica Molla</button>
+
+            <h4>Carichi Distribuiti (kN/m)</h4>
+            <div class="form-row"><label>Qy INI:</label><input type="number" id="entry_qy_i" value="-20.0"></div>
+            <div class="form-row"><label>Qy FIN:</label><input type="number" id="entry_qy_j" value="-20.0"></div>
+            <button onclick="setTool('Applica Carico Distribuito')">Applica Carico Asta</button>
+            
+            <h4>Cedimenti Vincolari (m, rad)</h4>
+            <div class="form-row"><label>δx:</label><input type="number" id="entry_ced_x" value="0.0"></div>
+            <div class="form-row"><label>δy:</label><input type="number" id="entry_ced_y" value="0.0"></div>
+            <div class="form-row"><label>φz:</label><input type="number" id="entry_ced_phi" value="0.0"></div>
+            <button onclick="setTool('Applica Cedimento')">Applica Cedimento</button>
+        </div>
+
+        <div class="canvas-container" id="canvasContainer">
+            <canvas id="mainCanvas"></canvas>
+        </div>
+    </div>
+    <div id="statusBar">Pronto. Strumento attivo: Seleziona</div>
+
+    <div id="resultsModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span>Diagrammi Sollecitazioni: Valori e Massimi/Minimi</span>
+                <button class="close-btn" onclick="document.getElementById('resultsModal').style.display='none'">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="plot-container" id="plot_N"></div>
+                <div class="plot-container" id="plot_T"></div>
+                <div class="plot-container" id="plot_M"></div>
+                <div class="plot-container" id="plot_Def"></div>
+            </div>
+        </div>
+    </div>
+
+    <div id="cookie-banner">
+        Questo sito utilizza i cookie per migliorare la tua esperienza e per il funzionamento di servizi di terze parti (come Google Translate).
+        <button onclick="acceptCookies()">Accetto</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        
+        let nodes = {};
+        let members = {};
+        let nodeCounter = 1;
+        let memberCounter = 1;
+
+        let scale = 50.0;
+        let offsetX = 100;
+        let offsetY = 500;
+        let isPanning = false;
+        let lastPanX = 0, lastPanY = 0;
+        
+        let currentTool = "Seleziona";
+        let selectedNodeI = null;
+        let selectedObject = null;
+        
+        let lastDiagrams = null; // Variabile aggiunta per salvare i dati per il DXF
+
+        function resizeCanvas() {
+            width = canvas.parentElement.clientWidth;
+            height = canvas.parentElement.clientHeight;
+            canvas.width = width;
+            canvas.height = height;
+            redraw();
+        }
+        window.addEventListener('resize', resizeCanvas);
+        
+        function setTool(tool) {
+            currentTool = tool;
+            selectedNodeI = null;
+            document.getElementById('statusBar').innerText = `Strumento attivo: ${tool}`;
+            redraw();
+        }
+
+        function realToPixel(x, y) { return { px: offsetX + x * scale, py: offsetY - y * scale }; }
+        function pixelToReal(px, py) { return { x: (px - offsetX) / scale, y: -(py - offsetY) / scale }; }
+
+        function addNodeFromCoords() {
+            let x = parseFloat(document.getElementById('entry_x').value);
+            let y = parseFloat(document.getElementById('entry_y').value);
+            if(isNaN(x) || isNaN(y)) return alert("Coordinate non valide");
+            nodes[nodeCounter] = { id: nodeCounter, x, y, angle: 0.0, ext_type: "Libero", int_release: "Nessuno (Incastro)", supports: [false, false, false], nodal_loads: [0,0,0], settlements: [0,0,0], spring_k: [0,0,0] };
+            document.getElementById('statusBar').innerText = `Creato Nodo N${nodeCounter} a (${x}, ${y})m`;
+            nodeCounter++;
+            redraw();
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = "#f1f2f6"; ctx.lineWidth = 1; ctx.beginPath();
+            let boundsMin = pixelToReal(0, height);
+            let boundsMax = pixelToReal(width, 0);
+            let step = (width / scale > 50) ? 5 : 1;
+            
+            for(let i = Math.floor(boundsMin.x); i <= Math.ceil(boundsMax.x); i+=step) {
+                let p1 = realToPixel(i, boundsMin.y), p2 = realToPixel(i, boundsMax.y);
+                ctx.moveTo(p1.px, p1.py); ctx.lineTo(p2.px, p2.py);
+            }
+            for(let i = Math.floor(boundsMin.y); i <= Math.ceil(boundsMax.y); i+=step) {
+                let p1 = realToPixel(boundsMin.x, i), p2 = realToPixel(boundsMax.x, i);
+                ctx.moveTo(p1.px, p1.py); ctx.lineTo(p2.px, p2.py);
+            }
+            ctx.stroke();
+        }
+
+        function drawArrow(ctx, fromx, fromy, tox, toy) {
+            let headlen = 8;
+            let angle = Math.atan2(toy - fromy, tox - fromx);
+            ctx.beginPath();
+            ctx.moveTo(fromx, fromy); ctx.lineTo(tox, toy);
+            ctx.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+            ctx.moveTo(tox, toy);
+            ctx.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+            ctx.stroke();
+        }
+
+        function redraw() {
+            ctx.clearRect(0, 0, width, height);
+            drawGrid();
+
+            // 1. Disegno Aste e Carichi Distribuiti
+            for (let id in members) {
+                let m = members[id];
+                let ni = nodes[m.node_i_id], nj = nodes[m.node_j_id];
+                let p1 = realToPixel(ni.x, ni.y), p2 = realToPixel(nj.x, nj.y);
+                
+                ctx.strokeStyle = (selectedObject && selectedObject.type === 'member' && selectedObject.id == id) ? "#e67e22" : "#2c3e50";
+                ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(p1.px, p1.py); ctx.lineTo(p2.px, p2.py); ctx.stroke();
+                
+                let midX = (p1.px + p2.px)/2, midY = (p1.py + p2.py)/2;
+                ctx.fillStyle = ctx.strokeStyle; ctx.font = "12px Arial";
+                ctx.fillText(m.name, midX, midY - 15);
+
+                let qy_i = m.qy_i / 1000, qy_j = m.qy_j / 1000;
+                if (qy_i !== 0 || qy_j !== 0) {
+                    let dx = p2.px - p1.px, dy = p2.py - p1.py;
+                    let len = Math.hypot(dx, dy);
+                    if (len > 0) {
+                        let nx = -dy/len, ny = dx/len; 
+                        let scaleLoad = 0.5; 
+                        ctx.fillStyle = "rgba(255, 0, 0, 0.2)"; ctx.strokeStyle = "red"; ctx.lineWidth = 1;
+                        ctx.beginPath();
+                        ctx.moveTo(p1.px + nx * qy_i * scaleLoad, p1.py + ny * qy_i * scaleLoad);
+                        ctx.lineTo(p2.px + nx * qy_j * scaleLoad, p2.py + ny * qy_j * scaleLoad);
+                        ctx.lineTo(p2.px, p2.py); ctx.lineTo(p1.px, p1.py);
+                        ctx.closePath(); ctx.fill(); ctx.stroke();
+                    }
+                }
+            }
+
+            // 2. Disegno Nodi, Vincoli e Molle
+            for (let id in nodes) {
+                let n = nodes[id], p = realToPixel(n.x, n.y);
+                let color = (selectedNodeI == id || (selectedObject && selectedObject.type === 'node' && selectedObject.id == id)) ? "#e67e22" : "#3498db";
+                
+                ctx.save();
+                ctx.translate(p.px, p.py); ctx.rotate(-n.angle * Math.PI / 180);
+
+                if (n.int_release === "Cerniera Interna") {
+                    ctx.fillStyle = "white"; ctx.strokeStyle = "black"; ctx.lineWidth = 1.5;
+                    ctx.beginPath(); ctx.arc(0, 0, 8, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
+                } else if (n.int_release === "Doppio Pendolo Interno") {
+                    ctx.fillStyle = "white"; ctx.strokeStyle = "white";
+                    ctx.beginPath(); ctx.rect(-4, -8, 8, 16); ctx.fill(); ctx.stroke();
+                    ctx.strokeStyle = "black"; ctx.lineWidth = 1.5;
+                    ctx.beginPath(); ctx.moveTo(-4, -8); ctx.lineTo(-4, 8); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(4, -8); ctx.lineTo(4, 8); ctx.stroke();
+                } else if (n.int_release === "Pendolo Interno") {
+                    ctx.fillStyle = "white"; ctx.strokeStyle = "white";
+                    ctx.beginPath(); ctx.rect(-8, -4, 16, 8); ctx.fill(); ctx.stroke();
+                    ctx.strokeStyle = "black"; ctx.lineWidth = 1.5;
+                    ctx.beginPath(); ctx.moveTo(-6, 0); ctx.lineTo(6, 0); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(-6, 0, 3, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.arc(6, 0, 3, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
+                }
+
+                if (n.ext_type === "Incastro") {
+                    ctx.fillStyle = "gray"; ctx.strokeStyle = "black"; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.rect(-12, 6, 24, 10); ctx.fill(); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(-8, 16); ctx.lineTo(-12, 20); ctx.moveTo(0, 16); ctx.lineTo(-4, 20); ctx.moveTo(8, 16); ctx.lineTo(4, 20); ctx.stroke();
+                } else if (n.ext_type === "Cerniera") {
+                    ctx.fillStyle = "lightgray"; ctx.strokeStyle = "black"; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(-10, 18); ctx.lineTo(10, 18); ctx.closePath(); ctx.fill(); ctx.stroke();
+                    ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-15, 18); ctx.lineTo(15, 18); ctx.stroke();
+                } else if (n.ext_type === "Carrello") {
+                    ctx.fillStyle = "lightgray"; ctx.strokeStyle = "black"; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(-8, 14); ctx.lineTo(8, 14); ctx.closePath(); ctx.fill(); ctx.stroke();
+                    ctx.fillStyle = "gray"; ctx.beginPath(); ctx.arc(-4, 16, 2, 0, 2*Math.PI); ctx.fill(); ctx.beginPath(); ctx.arc(0, 16, 2, 0, 2*Math.PI); ctx.fill(); ctx.beginPath(); ctx.arc(4, 16, 2, 0, 2*Math.PI); ctx.fill();
+                    ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-12, 18); ctx.lineTo(12, 18); ctx.stroke();
+                } else if (n.ext_type === "Pendolo") {
+                    ctx.strokeStyle = "black"; ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.moveTo(0, 6); ctx.lineTo(0, 18); ctx.stroke();
+                    ctx.fillStyle = "white"; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.arc(0, 6, 3, 0, 2*Math.PI); ctx.fill(); ctx.stroke(); ctx.beginPath(); ctx.arc(0, 18, 3, 0, 2*Math.PI); ctx.fill(); ctx.stroke();
+                    ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-10, 21); ctx.lineTo(10, 21); ctx.stroke();
+                } else if (n.ext_type === "Doppio Pendolo") {
+                    ctx.fillStyle = "lightgray"; ctx.strokeStyle = "black"; ctx.lineWidth = 1;
+                    ctx.beginPath(); ctx.rect(-12, 6, 24, 6); ctx.fill(); ctx.stroke();
+                    ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(-16, 16); ctx.lineTo(16, 16); ctx.stroke();
+                }
+                ctx.restore();
+
+                // ----------------------------------------------------------------
+                // DISEGNO MOLLE (Kx, Ky, Kφ) MAGGIORATO ED ESPLICITO
+                // ----------------------------------------------------------------
+                let kx = n.spring_k[0], ky = n.spring_k[1], kphi = n.spring_k[2];
+                ctx.strokeStyle = "#27ae60"; ctx.fillStyle = "#27ae60"; ctx.lineWidth = 2.5; 
+                ctx.font = "bold 12px Arial";
+                
+                if (ky !== 0) {
+                    let dir = ky > 0 ? 1 : -1;
+                    ctx.beginPath(); 
+                    ctx.moveTo(p.px, p.py + dir*6); 
+                    ctx.lineTo(p.px - 10, p.py + dir*14); 
+                    ctx.lineTo(p.px + 10, p.py + dir*22); 
+                    ctx.lineTo(p.px - 10, p.py + dir*30); 
+                    ctx.lineTo(p.px, p.py + dir*38); 
+                    ctx.stroke();
+                    ctx.fillText("Ky", p.px + 14, p.py + dir*30);
+                }
+                if (kx !== 0) {
+                    let dir = kx > 0 ? -1 : 1;
+                    ctx.beginPath(); 
+                    ctx.moveTo(p.px + dir*6, p.py); 
+                    ctx.lineTo(p.px + dir*14, p.py - 10); 
+                    ctx.lineTo(p.px + dir*22, p.py + 10); 
+                    ctx.lineTo(p.px + dir*30, p.py - 10); 
+                    ctx.lineTo(p.px + dir*38, p.py); 
+                    ctx.stroke();
+                    ctx.fillText("Kx", p.px + dir*45 - 10, p.py - 15);
+                }
+                if (kphi !== 0) {
+                    ctx.beginPath();
+                    ctx.setLineDash([3, 3]);
+                    ctx.arc(p.px, p.py, 22, 0, Math.PI * 1.5);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                    ctx.beginPath();
+                    ctx.arc(p.px, p.py - 22, 4, 0, 2*Math.PI);
+                    ctx.fill();
+                    ctx.fillText("Kφ", p.px + 26, p.py - 26);
+                }
+                // ----------------------------------------------------------------
+
+                // Corpo centrale Nodo
+                ctx.beginPath(); ctx.arc(p.px, p.py, 6, 0, 2*Math.PI);
+                ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = "white"; ctx.lineWidth=2; ctx.stroke();
+                ctx.fillStyle = "#2c3e50"; ctx.font = "bold 10px Arial"; ctx.fillText(`N${id}`, p.px + 10, p.py - 10);
+
+                // Forze
+                let fx = n.nodal_loads[0] / 1000, fy = n.nodal_loads[1] / 1000;
+                ctx.strokeStyle = "red"; ctx.fillStyle = "red"; ctx.lineWidth = 2;
+                if (fx !== 0) {
+                    drawArrow(ctx, p.px, p.py, p.px + fx * 1.5, p.py);
+                    ctx.fillText(`${fx.toFixed(1)}kN`, p.px + fx*1.5 + 5, p.py - 5);
+                }
+                if (fy !== 0) {
+                    drawArrow(ctx, p.px, p.py, p.px, p.py - fy * 1.5); 
+                    ctx.fillText(`${fy.toFixed(1)}kN`, p.px + 5, p.py - fy*1.5 - 5);
+                }
+
+                // Cedimenti
+                let dx = n.settlements[0], dy = n.settlements[1], rot_ced = n.settlements[2];
+                ctx.strokeStyle = "#8e44ad"; ctx.fillStyle = "#8e44ad"; ctx.setLineDash([4, 2]); ctx.lineWidth = 2;
+                if (dx !== 0) {
+                    let dir = dx > 0 ? 1 : -1; drawArrow(ctx, p.px, p.py, p.px + dir*40, p.py);
+                    ctx.fillText(`δx=${dx}`, p.px + dir*30, p.py - 10);
+                }
+                if (dy !== 0) {
+                    let dir = dy > 0 ? 1 : -1; drawArrow(ctx, p.px, p.py, p.px, p.py - dir*40);
+                    ctx.fillText(`δy=${dy}`, p.px + 10, p.py - dir*30);
+                }
+                if (rot_ced !== 0) {
+                    let dir_rot = rot_ced > 0 ? 1 : -1;
+                    ctx.beginPath(); ctx.arc(p.px, p.py, 18, 0, (dir_rot > 0 ? -Math.PI/2 : Math.PI/2), dir_rot > 0); ctx.stroke();
+                    ctx.fillText(`φ=${rot_ced}`, p.px + 22, p.py - 22);
+                }
+                ctx.setLineDash([]); 
+            }
+        }
+
+        function getClosestNode(px, py, tol=15) {
+            let closest = null, minDist = tol;
+            for(let id in nodes) {
+                let pt = realToPixel(nodes[id].x, nodes[id].y);
+                let dist = Math.hypot(px - pt.px, py - pt.py);
+                if(dist < minDist) { minDist = dist; closest = id; }
+            }
+            return closest;
+        }
+
+        function getClosestMember(px, py, tol=10) {
+            let closest = null, minDist = tol;
+            for(let id in members) {
+                let m = members[id], p1 = realToPixel(nodes[m.node_i_id].x, nodes[m.node_i_id].y), p2 = realToPixel(nodes[m.node_j_id].x, nodes[m.node_j_id].y);
+                let l2 = Math.pow(p2.px - p1.px, 2) + Math.pow(p2.py - p1.py, 2), dist = 0;
+                if(l2 === 0) dist = Math.hypot(px - p1.px, py - p1.py);
+                else {
+                    let t = Math.max(0, Math.min(1, ((px - p1.px)*(p2.px - p1.px) + (py - p1.py)*(p2.py - p1.py)) / l2));
+                    dist = Math.hypot(px - (p1.px + t*(p2.px-p1.px)), py - (p1.py + t*(p2.py-p1.py)));
+                }
+                if(dist < minDist) { minDist = dist; closest = id; }
+            }
+            return closest;
+        }
+
+        canvas.addEventListener('mousedown', (e) => {
+            if(e.button === 1 || e.button === 2) { isPanning = true; lastPanX = e.clientX; lastPanY = e.clientY; return; }
+            let rect = canvas.getBoundingClientRect(), px = e.clientX - rect.left, py = e.clientY - rect.top;
+
+            if(currentTool === "Seleziona") {
+                let nId = getClosestNode(px, py);
+                if(nId) selectedObject = {type: 'node', id: nId};
+                else {
+                    let mId = getClosestMember(px, py);
+                    if(mId) selectedObject = {type: 'member', id: mId}; else selectedObject = null;
+                }
+            } 
+            else if(currentTool === "Disegna Asta") {
+                let nId = getClosestNode(px, py);
+                if(nId) {
+                    if(!selectedNodeI) { selectedNodeI = nId; document.getElementById('statusBar').innerText = "Seleziona nodo FINE"; }
+                    else {
+                        if(selectedNodeI !== nId) {
+                            members[memberCounter] = { id: memberCounter, name: `E${memberCounter}`, node_i_id: parseInt(selectedNodeI), node_j_id: parseInt(nId), E: parseFloat(document.getElementById('entry_e').value)||210e9, A: parseFloat(document.getElementById('entry_a').value)||0.01, I: parseFloat(document.getElementById('entry_i').value)||0.0001, qx_i:0, qy_i:0, qx_j:0, qy_j:0 };
+                            document.getElementById('statusBar').innerText = `Creata Asta E${memberCounter}`; memberCounter++;
+                        }
+                        selectedNodeI = null;
+                    }
+                }
+            }
+            else if(currentTool === "Applica Vincolo") {
+                let nId = getClosestNode(px, py);
+                if(nId) {
+                    let ext = document.getElementById('combo_vincolo_ext').value, int_rel = document.getElementById('combo_vincolo_int').value, ang = parseFloat(document.getElementById('entry_node_angle').value) || 0.0;
+                    nodes[nId].ext_type = ext; nodes[nId].int_release = int_rel; nodes[nId].angle = ang;
+                    if(ext === "Incastro") nodes[nId].supports = [true,true,true]; else if(ext === "Cerniera") nodes[nId].supports = [true,true,false]; else if(["Carrello","Pendolo"].includes(ext)) nodes[nId].supports = [false,true,false]; else if(ext === "Doppio Pendolo") nodes[nId].supports = [false,true,true]; else nodes[nId].supports = [false,false,false];
+                    setTool("Seleziona");
+                }
+            }
+            else if(currentTool === "Applica Forza Concentrata") {
+                let nId = getClosestNode(px, py);
+                if(nId) { nodes[nId].nodal_loads[0] += (parseFloat(document.getElementById('entry_fx').value)||0)*1000; nodes[nId].nodal_loads[1] += (parseFloat(document.getElementById('entry_fy').value)||0)*1000; setTool("Seleziona"); }
+            }
+            else if(currentTool === "Applica Cedimento") {
+                let nId = getClosestNode(px, py);
+                if(nId) { nodes[nId].settlements = [parseFloat(document.getElementById('entry_ced_x').value)||0, parseFloat(document.getElementById('entry_ced_y').value)||0, parseFloat(document.getElementById('entry_ced_phi').value)||0]; setTool("Seleziona"); }
+            }
+            else if(currentTool === "Applica Molla") {
+                let nId = getClosestNode(px, py);
+                if(nId) { nodes[nId].spring_k = [parseFloat(document.getElementById('entry_kx').value)||0, parseFloat(document.getElementById('entry_ky').value)||0, parseFloat(document.getElementById('entry_kphi').value)||0]; setTool("Seleziona"); }
+            }
+            else if(currentTool === "Applica Carico Distribuito") {
+                let mId = getClosestMember(px, py);
+                if(mId) { members[mId].qx_i=0; members[mId].qy_i=(parseFloat(document.getElementById('entry_qy_i').value)||0)*1000; members[mId].qx_j=0; members[mId].qy_j=(parseFloat(document.getElementById('entry_qy_j').value)||0)*1000; setTool("Seleziona"); }
+            }
+            else if(currentTool === "Cancella Elemento") {
+                let nId = getClosestNode(px, py);
+                if(nId) { for(let mId in members) if(members[mId].node_i_id == nId || members[mId].node_j_id == nId) delete members[mId]; delete nodes[nId]; selectedObject=null; } 
+                else { let mId = getClosestMember(px, py); if(mId) { delete members[mId]; selectedObject=null; } }
+            }
+            else if(currentTool === "Cancella Carico") {
+                let nId = getClosestNode(px, py);
+                if(nId) { nodes[nId].nodal_loads=[0,0,0]; nodes[nId].spring_k=[0,0,0]; }
+                else { let mId = getClosestMember(px, py); if(mId) { members[mId].qx_i=members[mId].qy_i=members[mId].qx_j=members[mId].qy_j=0; } }
+            }
+            redraw();
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if(!isPanning) return;
+            offsetX += e.clientX - lastPanX; offsetY += e.clientY - lastPanY;
+            lastPanX = e.clientX; lastPanY = e.clientY; redraw();
+        });
+
+        canvas.addEventListener('mouseup', () => isPanning = false);
+        canvas.addEventListener('mouseleave', () => isPanning = false);
+        canvas.addEventListener('contextmenu', e => e.preventDefault());
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            let zoom = e.deltaY < 0 ? 1.1 : 0.9;
+            let rect = canvas.getBoundingClientRect(), rx = (e.clientX - rect.left - offsetX) / scale, ry = -(e.clientY - rect.top - offsetY) / scale;
+            scale *= zoom;
+            offsetX = (e.clientX - rect.left) - rx * scale; offsetY = (e.clientY - rect.top) + ry * scale;
+            redraw();
+        });
+
+        async function runSolve() {
+            document.getElementById('statusBar').innerText = "Calcolo in corso...";
+            let payload = { nodes: Object.values(nodes), members: Object.values(members) };
+
+            try {
+                let res = await fetch('http://127.0.0.1:8000/analyze', {
+                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+                });
+                
+                if(!res.ok) { let err = await res.json(); throw new Error(err.detail || "Errore dal server"); }
+                
+                let data = await res.json();
+                lastDiagrams = data.diagrams; // SALVO I DATI PER IL CAD
+                
+                document.getElementById('statusBar').innerText = "Calcolo terminato. Mostro grafici...";
+                
+                document.getElementById('resultsModal').style.display = 'flex';
+                
+                setTimeout(() => {
+                    drawPlotlyResults(data.diagrams);
+                }, 50);
+                
+            } catch (err) {
+                if (err.message.includes("Failed to fetch")) alert("⚠️ IMPOSSIBILE CONNETTERSI AL MOTORE DI CALCOLO ⚠️\n\nAssicurati che il server Python sia acceso eseguendo:\nuvicorn main:app --reload");
+                else alert("Errore nel Calcolo: " + err.message);
+                document.getElementById('statusBar').innerText = "Errore durante il calcolo.";
+            }
+        }
+        
+        // NUOVA FUNZIONE PER ESPORTARE IN DXF
+        async function exportDXF() {
+            if (!lastDiagrams) {
+                alert("Devi prima risolvere la struttura cliccando su 'RISOLVI E GRAFICA'.");
+                return;
+            }
+            document.getElementById('statusBar').innerText = "Generazione CAD in corso...";
+            try {
+                let res = await fetch('http://127.0.0.1:8000/export-dxf', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ diagrams: lastDiagrams })
+                });
+                
+                if (!res.ok) { let err = await res.json(); throw new Error(err.detail || "Errore dal server"); }
+                
+                let blob = await res.blob();
+                let url = window.URL.createObjectURL(blob);
+                let a = document.createElement('a');
+                a.href = url;
+                a.download = "Beam2Beam_Analisi.dxf";
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                document.getElementById('statusBar').innerText = "Esportazione DXF completata con successo.";
+            } catch (err) {
+                alert("Errore nell'esportazione: " + err.message);
+                document.getElementById('statusBar').innerText = "Errore esportazione DXF.";
+            }
+        }
+
+        function drawPlotlyResults(diagrams) {
+            let tracesN = [], tracesT = [], tracesM = [], tracesDef = [];
+            let annotN = [], annotT = [], annotM = [];
+            
+            let globalMaxN = -Infinity, globalMinN = Infinity;
+            let globalMaxT = -Infinity, globalMinT = Infinity;
+            let globalMaxM = -Infinity, globalMinM = Infinity;
+            
+            for(let id in diagrams) {
+                let valsN = diagrams[id].N.map(v => v/1000), valsT = diagrams[id].T.map(v => v/1000), valsM = diagrams[id].M.map(v => v/1000);
+                globalMaxN = Math.max(globalMaxN, ...valsN); globalMinN = Math.min(globalMinN, ...valsN);
+                globalMaxT = Math.max(globalMaxT, ...valsT); globalMinT = Math.min(globalMinT, ...valsT);
+                globalMaxM = Math.max(globalMaxM, ...valsM); globalMinM = Math.min(globalMinM, ...valsM);
+            }
+
+            for(let id in members) {
+                let ni = nodes[members[id].node_i_id], nj = nodes[members[id].node_j_id];
+                tracesDef.push({ x: [ni.x, nj.x], y: [ni.y, nj.y], mode: 'lines', line: {color: '#bdc3c7', dash: 'dash', width:2}, hoverinfo: 'none', showlegend:false });
+            }
+
+            let maxL = Math.max(1, ...Object.values(diagrams).map(d => d.L));
+            let maxN = Math.max(1e-5, Math.abs(globalMaxN), Math.abs(globalMinN));
+            let maxT = Math.max(1e-5, Math.abs(globalMaxT), Math.abs(globalMinT));
+            let maxM = Math.max(1e-5, Math.abs(globalMaxM), Math.abs(globalMinM));
+            
+            let scN = (maxL * 0.25) / maxN, scT = (maxL * 0.25) / maxT, scM = (maxL * 0.25) / maxM;
+            let maxDisp = Math.max(1e-9, ...Object.values(diagrams).flatMap(d => d.dx_g.map((dx, i) => Math.hypot(dx, d.dy_g[i]))));
+            let scDisp = (maxL * 0.10) / maxDisp;
+
+            function processDiagram(d, valArray, scaleFactor, color, invertM, tracesArray, annotArray, globalMax, globalMin) {
+                let dir = invertM ? -1 : 1;
+                let vals = valArray.map(v => v/1000);
+                let xp = [], yp = [], hoverTexts = [];
+                
+                let localMax = Math.max(...vals), localMin = Math.min(...vals);
+                let idxMax = vals.indexOf(localMax), idxMin = vals.indexOf(localMin);
+
+                for(let i=0; i<d.X_base.length; i++) {
+                    let x_diag = d.X_base[i] - vals[i] * scaleFactor * d.s * dir;
+                    let y_diag = d.Y_base[i] + vals[i] * scaleFactor * d.c * dir;
+                    xp.push(x_diag); yp.push(y_diag);
+                    let pos = (i * d.L / (d.X_base.length - 1)).toFixed(2);
+                    hoverTexts.push(`<b>${d.name}</b><br>Pos: ${pos} m<br>Valore: ${vals[i].toFixed(2)}`);
+                }
+
+                let xPoly = d.X_base.concat(xp.slice().reverse(), [d.X_base[0]]);
+                let yPoly = d.Y_base.concat(yp.slice().reverse(), [d.Y_base[0]]);
+                tracesArray.push({ x: xPoly, y: yPoly, fill: 'toself', mode: 'none', fillcolor: color, opacity: 0.2, showlegend: false, hoverinfo: 'skip' });
+
+                tracesArray.push({ x: xp, y: yp, mode: 'lines', line: {color: color, width: 2}, showlegend: false, hoverinfo: 'text', text: hoverTexts });
+
+                let makeAnnot = (val, idx, isGlobal) => {
+                    if (Math.abs(val) > 1e-3) {
+                        let isMax = val === localMax;
+                        annotArray.push({
+                            x: xp[idx], y: yp[idx],
+                            text: isGlobal ? `<b>ASSOLUTO: ${val.toFixed(2)}</b>` : `${isMax?'Max':'Min'}: ${val.toFixed(2)}`,
+                            showarrow: true, arrowhead: 1, ax: isMax ? 25 : -25, ay: isMax ? -25 : 25,
+                            font: {size: isGlobal ? 12 : 10, color: isGlobal ? 'red' : 'black'},
+                            bgcolor: 'rgba(255,255,255,0.85)', bordercolor: isGlobal ? 'red' : '#ccc'
+                        });
+                    }
+                };
+
+                makeAnnot(localMax, idxMax, localMax === globalMax);
+                if (localMin !== localMax) makeAnnot(localMin, idxMin, localMin === globalMin);
+            }
+
+            for(let id in diagrams) {
+                let d = diagrams[id];
+                processDiagram(d, d.N, scN, '#3498db', false, tracesN, annotN, globalMaxN, globalMinN);
+                processDiagram(d, d.T, scT, '#2ecc71', false, tracesT, annotT, globalMaxT, globalMinT);
+                processDiagram(d, d.M, scM, '#e74c3c', true, tracesM, annotM, globalMaxM, globalMinM);
+
+                let xDef = d.X_base.map((x, i) => x + d.dx_g[i] * scDisp);
+                let yDef = d.Y_base.map((y, i) => y + d.dy_g[i] * scDisp);
+                tracesDef.push({ x: xDef, y: yDef, mode: 'lines', line: {color: '#9b59b6', width: 3}, name: d.name, hoverinfo: 'text', text: d.dx_g.map((dx,i) => `<b>${d.name}</b><br>Pos: ${(i * d.L / (d.X_base.length - 1)).toFixed(2)} m<br>δx: ${(dx*1000).toFixed(3)}mm<br>δy: ${(d.dy_g[i]*1000).toFixed(3)}mm`) });
+            }
+
+            let layoutBase = { margin: {l: 40, r: 40, t: 30, b: 20}, autosize: true, xaxis: {scaleanchor:"y", scaleratio:1, showgrid:true}, yaxis: {showgrid:true}, hovermode: 'closest' };
+
+            Plotly.newPlot('plot_N', tracesN, {title: {text:'Sforzo Normale (N) [kN]', font:{size:14}}, annotations: annotN, ...layoutBase});
+            Plotly.newPlot('plot_T', tracesT, {title: {text:'Taglio (T) [kN]', font:{size:14}}, annotations: annotT, ...layoutBase});
+            Plotly.newPlot('plot_M', tracesM, {title: {text:'Momento Flettente (M) [kNm]', font:{size:14}}, annotations: annotM, ...layoutBase});
+            Plotly.newPlot('plot_Def', tracesDef, {title: {text:'Deformata Interattiva', font:{size:14}}, ...layoutBase});
+        }
+
+        resizeCanvas();
+        
+        // SCRIPT COOKIE BANNER
+        function acceptCookies() {
+            localStorage.setItem('cookieAccepted', 'yes');
+            document.getElementById('cookie-banner').style.display = 'none';
+        }
+        window.addEventListener('DOMContentLoaded', () => {
+            if (!localStorage.getItem('cookieAccepted')) {
+                document.getElementById('cookie-banner').style.display = 'block';
+            }
+        });
+
+        // SCRIPT GOOGLE TRANSLATE
+        function googleTranslateElementInit() {
+            new google.translate.TranslateElement({pageLanguage: 'it', layout: google.translate.TranslateElement.InlineLayout.SIMPLE}, 'google_translate_element');
+        }
+    </script>
+    <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+</body>
+</html>
