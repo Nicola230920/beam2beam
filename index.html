@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <title>Beam2Beam | Calcolatore Strutturale Gratuito Online</title>
 <meta name="description" content="Risolutore di telai 2D online gratuito. Calcola reazioni vincolari, sforzo normale, taglio, momento flettente e deformata. Disegna il tuo schema strutturale interattivamente.">
-<meta name="keywords" content="FEA, elementi finiti, calcolo strutturale, telaio 2D, ingegneria civile, diagrammi taglio momento">
+<meta name="keywords" content="FEA, elementi finiti, calcolo strutturale, telaio 2D, ingegneria civile, diagrammi taglio momento, structure, civil engineering, beam, momentum, shear, compression, stres diagram">
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <style>
         body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background-color: #f0f2f5; }
@@ -514,7 +514,7 @@
             let payload = { nodes: Object.values(nodes), members: Object.values(members) };
 
             try {
-                let res = await fetch('http://127.0.0.1:8000/analyze', {
+                let res = await fetch('https://beam2beam.onrender.com/analyze', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
                 });
                 
@@ -546,7 +546,7 @@
             }
             document.getElementById('statusBar').innerText = "Generazione CAD in corso...";
             try {
-                let res = await fetch('http://127.0.0.1:8000/export-dxf', {
+                let res = await fetch('https://beam2beam.onrender.com/export-dxf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ diagrams: lastDiagrams })
