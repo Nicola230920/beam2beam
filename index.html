@@ -588,7 +588,7 @@
             }
             document.getElementById('statusBar').innerText = "Generazione CAD in corso...";
             try {
-                let res = await fetch('http://127.0.0.1:8000/export-dxf', {
+                let res = await fetch('https://beam2beam.onrender.com/export-dxf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ diagrams: lastDiagrams })
