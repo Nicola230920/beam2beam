@@ -1,7 +1,6 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <!-- Google tag (gtag.js) -->
 <script async src="https://www.googletagmanager.com/gtag/js?id=G-ZV9DCTDZHW"></script>
 <script>
   window.dataLayer = window.dataLayer || [];
@@ -11,10 +10,9 @@
   gtag('config', 'G-ZV9DCTDZHW');
 </script>
     <meta charset="UTF-8">
-    <meta name="google-site-verification" content="aYBrQP5qrCyc_oZf6Gx5wLQFUaOCitvCtoZMd4-c4C4" />
     <title>Beam2Beam | Calcolatore Strutturale Gratuito Online</title>
 <meta name="description" content="Risolutore di telai 2D online gratuito. Calcola reazioni vincolari, sforzo normale, taglio, momento flettente e deformata. Disegna il tuo schema strutturale interattivamente.">
-<meta name="keywords" content="FEA, elementi finiti, calcolo strutturale, telaio 2D, ingegneria civile, diagrammi taglio momento, structure, civil engineering, beam, momentum, shear, compression, stres diagram">
+<meta name="keywords" content="FEA, elementi finiti, calcolo strutturale, telaio 2D, ingegneria civile, diagrammi taglio momento">
     <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
     <style>
         body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; display: flex; flex-direction: column; height: 100vh; overflow: hidden; background-color: #f0f2f5; }
@@ -119,10 +117,11 @@
             <div class="form-row"><label>A (m²):</label><input type="number" id="entry_a" value="0.01"></div>
             <div class="form-row"><label>I (m⁴):</label><input type="number" id="entry_i" value="0.0001"></div>
 
-            <h4>Carichi Nodali (kN)</h4>
+            <h4>Carichi Nodali (kN, kNm)</h4>
             <div class="form-row"><label>Fx:</label><input type="number" id="entry_fx" value="10.0"></div>
             <div class="form-row"><label>Fy:</label><input type="number" id="entry_fy" value="-2.0"></div>
-            <button onclick="setTool('Applica Forza Concentrata')">Applica Forza</button>
+            <div class="form-row"><label>Mz:</label><input type="number" id="entry_mz" value="0.0"></div>
+            <button onclick="setTool('Applica Forza Concentrata')">Applica Forza/Momento</button>
 
             <h4>Molle (kN/m)</h4>
             <div class="form-row"><label>Kx:</label><input type="number" id="entry_kx" value="0.0"></div>
@@ -131,6 +130,8 @@
             <button onclick="setTool('Applica Molla')">Applica Molla</button>
 
             <h4>Carichi Distribuiti (kN/m)</h4>
+            <div class="form-row"><label>Qx INI:</label><input type="number" id="entry_qx_i" value="0.0"></div>
+            <div class="form-row"><label>Qx FIN:</label><input type="number" id="entry_qx_j" value="0.0"></div>
             <div class="form-row"><label>Qy INI:</label><input type="number" id="entry_qy_i" value="-20.0"></div>
             <div class="form-row"><label>Qy FIN:</label><input type="number" id="entry_qy_j" value="-20.0"></div>
             <button onclick="setTool('Applica Carico Distribuito')">Applica Carico Asta</button>
@@ -188,7 +189,7 @@
         let selectedNodeI = null;
         let selectedObject = null;
         
-        let lastDiagrams = null; // Variabile aggiunta per salvare i dati per il DXF
+        let lastDiagrams = null; 
 
         function resizeCanvas() {
             width = canvas.parentElement.clientWidth;
@@ -265,19 +266,38 @@
                 ctx.fillStyle = ctx.strokeStyle; ctx.font = "12px Arial";
                 ctx.fillText(m.name, midX, midY - 15);
 
+                let qx_i = m.qx_i / 1000, qx_j = m.qx_j / 1000;
                 let qy_i = m.qy_i / 1000, qy_j = m.qy_j / 1000;
-                if (qy_i !== 0 || qy_j !== 0) {
+                
+                if (qy_i !== 0 || qy_j !== 0 || qx_i !== 0 || qx_j !== 0) {
                     let dx = p2.px - p1.px, dy = p2.py - p1.py;
                     let len = Math.hypot(dx, dy);
                     if (len > 0) {
-                        let nx = -dy/len, ny = dx/len; 
+                        let nx = -dy/len, ny = dx/len; // Versore Normale
+                        let tx = dx/len, ty = dy/len;  // Versore Tangente
                         let scaleLoad = 0.5; 
-                        ctx.fillStyle = "rgba(255, 0, 0, 0.2)"; ctx.strokeStyle = "red"; ctx.lineWidth = 1;
-                        ctx.beginPath();
-                        ctx.moveTo(p1.px + nx * qy_i * scaleLoad, p1.py + ny * qy_i * scaleLoad);
-                        ctx.lineTo(p2.px + nx * qy_j * scaleLoad, p2.py + ny * qy_j * scaleLoad);
-                        ctx.lineTo(p2.px, p2.py); ctx.lineTo(p1.px, p1.py);
-                        ctx.closePath(); ctx.fill(); ctx.stroke();
+                        
+                        // Disegno Qy (Carico Trasversale)
+                        if (qy_i !== 0 || qy_j !== 0) {
+                            ctx.fillStyle = "rgba(255, 0, 0, 0.2)"; ctx.strokeStyle = "red"; ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(p1.px + nx * qy_i * scaleLoad, p1.py + ny * qy_i * scaleLoad);
+                            ctx.lineTo(p2.px + nx * qy_j * scaleLoad, p2.py + ny * qy_j * scaleLoad);
+                            ctx.lineTo(p2.px, p2.py); ctx.lineTo(p1.px, p1.py);
+                            ctx.closePath(); ctx.fill(); ctx.stroke();
+                        }
+                        
+                        // Disegno Qx (Carico Assiale) - Scostato leggermente per non sovrapporsi all'asta
+                        if (qx_i !== 0 || qx_j !== 0) {
+                            let off = 10; // offset in pixel per evitare sovrapposizioni
+                            ctx.fillStyle = "rgba(230, 126, 34, 0.2)"; ctx.strokeStyle = "#d35400"; ctx.lineWidth = 1;
+                            ctx.beginPath();
+                            ctx.moveTo(p1.px - nx * off - tx * qx_i * scaleLoad, p1.py - ny * off - ty * qx_i * scaleLoad);
+                            ctx.lineTo(p2.px - nx * off - tx * qx_j * scaleLoad, p2.py - ny * off - ty * qx_j * scaleLoad);
+                            ctx.lineTo(p2.px - nx * off, p2.py - ny * off); 
+                            ctx.lineTo(p1.px - nx * off, p1.py - ny * off);
+                            ctx.closePath(); ctx.fill(); ctx.stroke();
+                        }
                     }
                 }
             }
@@ -334,9 +354,6 @@
                 }
                 ctx.restore();
 
-                // ----------------------------------------------------------------
-                // DISEGNO MOLLE (Kx, Ky, Kφ) MAGGIORATO ED ESPLICITO
-                // ----------------------------------------------------------------
                 let kx = n.spring_k[0], ky = n.spring_k[1], kphi = n.spring_k[2];
                 ctx.strokeStyle = "#27ae60"; ctx.fillStyle = "#27ae60"; ctx.lineWidth = 2.5; 
                 ctx.font = "bold 12px Arial";
@@ -374,15 +391,12 @@
                     ctx.fill();
                     ctx.fillText("Kφ", p.px + 26, p.py - 26);
                 }
-                // ----------------------------------------------------------------
 
-                // Corpo centrale Nodo
                 ctx.beginPath(); ctx.arc(p.px, p.py, 6, 0, 2*Math.PI);
                 ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = "white"; ctx.lineWidth=2; ctx.stroke();
                 ctx.fillStyle = "#2c3e50"; ctx.font = "bold 10px Arial"; ctx.fillText(`N${id}`, p.px + 10, p.py - 10);
 
-                // Forze
-                let fx = n.nodal_loads[0] / 1000, fy = n.nodal_loads[1] / 1000;
+                let fx = n.nodal_loads[0] / 1000, fy = n.nodal_loads[1] / 1000, mz = n.nodal_loads[2] / 1000;
                 ctx.strokeStyle = "red"; ctx.fillStyle = "red"; ctx.lineWidth = 2;
                 if (fx !== 0) {
                     drawArrow(ctx, p.px, p.py, p.px + fx * 1.5, p.py);
@@ -392,17 +406,25 @@
                     drawArrow(ctx, p.px, p.py, p.px, p.py - fy * 1.5); 
                     ctx.fillText(`${fy.toFixed(1)}kN`, p.px + 5, p.py - fy*1.5 - 5);
                 }
-
-                // Cedimenti
-                let dx = n.settlements[0], dy = n.settlements[1], rot_ced = n.settlements[2];
-                ctx.strokeStyle = "#8e44ad"; ctx.fillStyle = "#8e44ad"; ctx.setLineDash([4, 2]); ctx.lineWidth = 2;
-                if (dx !== 0) {
-                    let dir = dx > 0 ? 1 : -1; drawArrow(ctx, p.px, p.py, p.px + dir*40, p.py);
-                    ctx.fillText(`δx=${dx}`, p.px + dir*30, p.py - 10);
+                if (mz !== 0) {
+                    ctx.beginPath();
+                    // mz positivo = antiorario
+                    ctx.arc(p.px, p.py, 20, -Math.PI/2, Math.PI/2, mz > 0);
+                    ctx.stroke();
+                    if (mz > 0) drawArrow(ctx, p.px, p.py + 20, p.px + 2, p.py + 20);
+                    else drawArrow(ctx, p.px, p.py + 20, p.px - 2, p.py + 20);
+                    ctx.fillText(`Mz=${mz.toFixed(1)}kNm`, p.px + 24, p.py);
                 }
-                if (dy !== 0) {
-                    let dir = dy > 0 ? 1 : -1; drawArrow(ctx, p.px, p.py, p.px, p.py - dir*40);
-                    ctx.fillText(`δy=${dy}`, p.px + 10, p.py - dir*30);
+
+                let dx_ced = n.settlements[0], dy_ced = n.settlements[1], rot_ced = n.settlements[2];
+                ctx.strokeStyle = "#8e44ad"; ctx.fillStyle = "#8e44ad"; ctx.setLineDash([4, 2]); ctx.lineWidth = 2;
+                if (dx_ced !== 0) {
+                    let dir = dx_ced > 0 ? 1 : -1; drawArrow(ctx, p.px, p.py, p.px + dir*40, p.py);
+                    ctx.fillText(`δx=${dx_ced}`, p.px + dir*30, p.py - 10);
+                }
+                if (dy_ced !== 0) {
+                    let dir = dy_ced > 0 ? 1 : -1; drawArrow(ctx, p.px, p.py, p.px, p.py - dir*40);
+                    ctx.fillText(`δy=${dy_ced}`, p.px + 10, p.py - dir*30);
                 }
                 if (rot_ced !== 0) {
                     let dir_rot = rot_ced > 0 ? 1 : -1;
@@ -474,7 +496,12 @@
             }
             else if(currentTool === "Applica Forza Concentrata") {
                 let nId = getClosestNode(px, py);
-                if(nId) { nodes[nId].nodal_loads[0] += (parseFloat(document.getElementById('entry_fx').value)||0)*1000; nodes[nId].nodal_loads[1] += (parseFloat(document.getElementById('entry_fy').value)||0)*1000; setTool("Seleziona"); }
+                if(nId) { 
+                    nodes[nId].nodal_loads[0] += (parseFloat(document.getElementById('entry_fx').value)||0)*1000; 
+                    nodes[nId].nodal_loads[1] += (parseFloat(document.getElementById('entry_fy').value)||0)*1000; 
+                    nodes[nId].nodal_loads[2] += (parseFloat(document.getElementById('entry_mz').value)||0)*1000; 
+                    setTool("Seleziona"); 
+                }
             }
             else if(currentTool === "Applica Cedimento") {
                 let nId = getClosestNode(px, py);
@@ -486,7 +513,13 @@
             }
             else if(currentTool === "Applica Carico Distribuito") {
                 let mId = getClosestMember(px, py);
-                if(mId) { members[mId].qx_i=0; members[mId].qy_i=(parseFloat(document.getElementById('entry_qy_i').value)||0)*1000; members[mId].qx_j=0; members[mId].qy_j=(parseFloat(document.getElementById('entry_qy_j').value)||0)*1000; setTool("Seleziona"); }
+                if(mId) { 
+                    members[mId].qx_i=(parseFloat(document.getElementById('entry_qx_i').value)||0)*1000; 
+                    members[mId].qx_j=(parseFloat(document.getElementById('entry_qx_j').value)||0)*1000; 
+                    members[mId].qy_i=(parseFloat(document.getElementById('entry_qy_i').value)||0)*1000; 
+                    members[mId].qy_j=(parseFloat(document.getElementById('entry_qy_j').value)||0)*1000; 
+                    setTool("Seleziona"); 
+                }
             }
             else if(currentTool === "Cancella Elemento") {
                 let nId = getClosestNode(px, py);
@@ -524,14 +557,14 @@
             let payload = { nodes: Object.values(nodes), members: Object.values(members) };
 
             try {
-                let res = await fetch('https://beam2beam.onrender.com/analyze', {
+                let res = await fetch('http://127.0.0.1:8000/analyze', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
                 });
                 
                 if(!res.ok) { let err = await res.json(); throw new Error(err.detail || "Errore dal server"); }
                 
                 let data = await res.json();
-                lastDiagrams = data.diagrams; // SALVO I DATI PER IL CAD
+                lastDiagrams = data.diagrams;
                 
                 document.getElementById('statusBar').innerText = "Calcolo terminato. Mostro grafici...";
                 
@@ -548,7 +581,6 @@
             }
         }
         
-        // NUOVA FUNZIONE PER ESPORTARE IN DXF
         async function exportDXF() {
             if (!lastDiagrams) {
                 alert("Devi prima risolvere la struttura cliccando su 'RISOLVI E GRAFICA'.");
@@ -556,7 +588,7 @@
             }
             document.getElementById('statusBar').innerText = "Generazione CAD in corso...";
             try {
-                let res = await fetch('https://beam2beam.onrender.com/export-dxf', {
+                let res = await fetch('http://127.0.0.1:8000/export-dxf', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ diagrams: lastDiagrams })
@@ -669,7 +701,6 @@
 
         resizeCanvas();
         
-        // SCRIPT COOKIE BANNER
         function acceptCookies() {
             localStorage.setItem('cookieAccepted', 'yes');
             document.getElementById('cookie-banner').style.display = 'none';
@@ -680,7 +711,6 @@
             }
         });
 
-        // SCRIPT GOOGLE TRANSLATE
         function googleTranslateElementInit() {
             new google.translate.TranslateElement({pageLanguage: 'it', layout: google.translate.TranslateElement.InlineLayout.SIMPLE}, 'google_translate_element');
         }
