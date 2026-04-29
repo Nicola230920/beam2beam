@@ -557,7 +557,7 @@
             let payload = { nodes: Object.values(nodes), members: Object.values(members) };
 
             try {
-                let res = await fetch('https://beam2beam.onrender.com', {
+                let res = await fetch('https://beam2beam.onrender.com/analyze', {
                     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
                 });
                 
